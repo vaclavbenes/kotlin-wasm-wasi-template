@@ -25,6 +25,18 @@ kotlin {
     }
 
     sourceSets {
+//        commonMain.dependencies {
+//            implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.7.0")
+//
+//        }
+
+        val wasmWasiMain by getting {
+            dependencies {
+//                implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.7.0")
+            }
+        }
+
+
         val wasmWasiTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)
@@ -188,7 +200,7 @@ tasks.withType<KotlinJsTest>().all {
     val denoExecTask = createDenoExec(
         inputFileProperty,
         name.replace("Node", "Deno"),
-        "deno"
+        group
     )
 
     denoExecTask.configure {
@@ -199,6 +211,20 @@ tasks.withType<KotlinJsTest>().all {
 
     tasks.withType<KotlinTestReport> {
         dependsOn(denoExecTask)
+    }
+}
+
+tasks.withType<NodeJsExec>().all {
+    val denoExecTask = createDenoExec(
+        inputFileProperty,
+        name.replace("Node", "Deno"),
+        group
+    )
+
+    denoExecTask.configure {
+        dependsOn (
+            project.provider { this@all.taskDependencies }
+        )
     }
 }
 
@@ -330,7 +356,7 @@ tasks.withType<NodeJsExec>().all {
      val wasmEdgeRunTask = createWasmEdgeExec(
         inputFileProperty,
         name.replace("Node", "WasmEdge"),
-        "wasmEdge",
+        group,
         "dummy"
     )
 
@@ -340,65 +366,3 @@ tasks.withType<NodeJsExec>().all {
         )
     }
 }
-
-val wamrVersion = "2.2.0"
-val wamrDirectoryName = "iwasm-gc-eh-$wamrVersion"
-
-val unzipWAMR = run {
-    val wamrDirectory = "https://github.com/bytecodealliance/wasm-micro-runtime/releases/download/WAMR-$wamrVersion"
-    val wamrSuffix = when (currentOsType) {
-        OsType(OsName.LINUX, OsArch.X86_64) -> "x86_64-ubuntu-20.04"
-        OsType(OsName.MAC, OsArch.X86_64),
-        OsType(OsName.MAC, OsArch.ARM64) -> "x86_64-macos-13"
-        OsType(OsName.WINDOWS, OsArch.X86_32),
-        OsType(OsName.WINDOWS, OsArch.X86_64) -> "x86_64-windows-latest"
-        else -> error("unsupported os type $currentOsType")
-    }
-
-    val wamrArtifactiName = "$wamrDirectoryName-$wamrSuffix.tar.gz"
-    val wamrLocation = "$wamrDirectory/$wamrArtifactiName"
-
-    val downloadedTools = File(layout.buildDirectory.asFile.get(), "tools")
-
-    val downloadWamr = tasks.register("wamrDownload", Download::class) {
-        src(wamrLocation)
-        dest(File(downloadedTools, wamrArtifactiName))
-        overwrite(false)
-    }
-
-    tasks.register("wamrUnzip", Copy::class) {
-        dependsOn(downloadWamr)
-        from(tarTree(downloadWamr.get().dest))
-        into(downloadedTools.resolve(wamrDirectoryName) )
-    }
-}
-
-
-tasks.register<Exec>("runWamr") {
-    group = "wamr"
-    dependsOn(unzipWAMR)
-
-    // Get the location of the wasm file from the build directory
-    val wasmFile = project.layout.buildDirectory
-        .file("compileSync/wasmWasi/main/productionExecutable/optimized/kotlin-wasm-wasi-example-wasm-wasi.wasm")
-
-    doFirst {
-        val wamrBinary = if (currentOsType.name == OsName.WINDOWS) {
-            "${unzipWAMR.get().destinationDir}/iwasm.exe"
-        } else {
-            "${unzipWAMR.get().destinationDir}/iwasm"
-        }
-
-        val out = commandLine(
-            wamrBinary,
-            "--heap-size=${10.Mb}", // 10MB heap (adjust as needed)
-            wasmFile.get().asFile.absolutePath
-        )
-        println(out)
-    }
-}
-
-val Int.Bytes: Int get() = this
-val Int.Kb: Int get() = this * 1024
-val Int.Mb: Int get() = this * 1024 * 1024
-val Int.Gb: Int get() = this * 1024 * 1024 * 1024
