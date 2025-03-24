@@ -40,6 +40,7 @@ kotlin {
         val wasmWasiTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)
+
             }
         }
     }
@@ -200,7 +201,7 @@ tasks.withType<KotlinJsTest>().all {
     val denoExecTask = createDenoExec(
         inputFileProperty,
         name.replace("Node", "Deno"),
-        group
+        "deno"
     )
 
     denoExecTask.configure {
@@ -211,20 +212,6 @@ tasks.withType<KotlinJsTest>().all {
 
     tasks.withType<KotlinTestReport> {
         dependsOn(denoExecTask)
-    }
-}
-
-tasks.withType<NodeJsExec>().all {
-    val denoExecTask = createDenoExec(
-        inputFileProperty,
-        name.replace("Node", "Deno"),
-        group
-    )
-
-    denoExecTask.configure {
-        dependsOn (
-            project.provider { this@all.taskDependencies }
-        )
     }
 }
 
@@ -356,7 +343,7 @@ tasks.withType<NodeJsExec>().all {
      val wasmEdgeRunTask = createWasmEdgeExec(
         inputFileProperty,
         name.replace("Node", "WasmEdge"),
-        group,
+        "wasmEdge",
         "dummy"
     )
 
@@ -366,3 +353,90 @@ tasks.withType<NodeJsExec>().all {
         )
     }
 }
+
+val wamrVersion = "2.2.0"
+val wamrDirectoryName = "iwasm-gc-eh-$wamrVersion"
+
+val unzipWAMR = run {
+    val wamrDirectory = "https://github.com/bytecodealliance/wasm-micro-runtime/releases/download/WAMR-$wamrVersion"
+    val wamrSuffix = when (currentOsType) {
+        OsType(OsName.LINUX, OsArch.X86_64) -> "x86_64-ubuntu-20.04"
+        OsType(OsName.MAC, OsArch.X86_64),
+        OsType(OsName.MAC, OsArch.ARM64) -> "x86_64-macos-13"
+        OsType(OsName.WINDOWS, OsArch.X86_32),
+        OsType(OsName.WINDOWS, OsArch.X86_64) -> "x86_64-windows-latest"
+        else -> error("unsupported os type $currentOsType")
+    }
+
+    val wamrArtifactiName = "$wamrDirectoryName-$wamrSuffix.tar.gz"
+    val wamrLocation = "$wamrDirectory/$wamrArtifactiName"
+
+    val downloadedTools = File(layout.buildDirectory.asFile.get(), "tools")
+
+    val downloadWamr = tasks.register("wamrDownload", Download::class) {
+        src(wamrLocation)
+        dest(File(downloadedTools, wamrArtifactiName))
+        overwrite(false)
+    }
+
+    tasks.register("wamrUnzip", Copy::class) {
+        dependsOn(downloadWamr)
+        from(tarTree(downloadWamr.get().dest))
+        into(downloadedTools.resolve(wamrDirectoryName) )
+    }
+}
+
+/**
+ *   -f|--function name       Specify a function name of the module to run rather
+ *                            than main
+ *   -v=n                     Set log verbose level (0 to 5, default is 2) larger
+ *                            level with more log
+ *   --interp                 Run the wasm app with interpreter mode
+ *   --stack-size=n           Set maximum stack size in bytes, default is 64 KB
+ *   --heap-size=n            Set maximum heap size in bytes, default is 16 KB
+ *   --gc-heap-size=n         Set maximum gc heap size in bytes,
+ *                            default is 128 KB
+ */
+tasks.register<Exec>("runWamr") {
+    group = "wamr"
+    dependsOn(unzipWAMR)
+
+    val wamrBinary = if (currentOsType.name == OsName.WINDOWS) {
+        "${unzipWAMR.get().destinationDir}/iwasm.exe"
+    } else {
+        "${unzipWAMR.get().destinationDir}/iwasm"
+    }
+
+    File(wamrBinary).printSize()
+
+    val wasmFile = project.layout.buildDirectory
+        .file("compileSync/wasmWasi/main/productionExecutable/optimized/kotlin-wasm-wasi-example-wasm-wasi.wasm")
+
+    val wasmFilePath = wasmFile.get().asFile
+    wasmFilePath.printSize()
+
+    doFirst {
+        commandLine(
+            wamrBinary,
+            "--heap-size=${10.Mb}", // 10MB heap (adjust as needed) , default
+            "-f",
+            "dummy",
+            wasmFile.get().asFile.toPath()
+        )
+    }
+
+    dependsOn("assemble")
+}
+
+fun File.printSize(){
+    val len = length()
+    val kbs = len / 1024
+    // round mbs to 2 decimal places
+    val mbs = (kbs / 1024.0).let { "%.3f".format(it) }
+    println("Size of $name: ( $mbs MB, $kbs KB, $len Bytes)")
+}
+
+val Int.Bytes: Int get() = this
+val Int.Kb: Int get() = this * 1024
+val Int.Mb: Int get() = this * 1024 * 1024
+val Int.Gb: Int get() = this * 1024 * 1024 * 1024
