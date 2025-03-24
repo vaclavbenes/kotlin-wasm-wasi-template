@@ -1,6 +1,5 @@
 import kotlin.wasm.unsafe.UnsafeWasmMemoryApi
 import wasi.Wasi.println
-import wasi.Wasi.createFile
 
 
 // We need it to run WasmEdge with the _initialize function
@@ -14,6 +13,7 @@ fun dummy() {
 fun main() {
     println("Hello from Kotlin via WASI")
 
-    createFile("hello.txt", "Hello, WASI!")
+    // Fix in Rust
+    // createFile("hello.txt", "Hello, WASI!")
 
 }
