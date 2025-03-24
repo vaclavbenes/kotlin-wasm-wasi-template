@@ -418,7 +418,9 @@ tasks.register<Exec>("runWamr") {
     doFirst {
         commandLine(
             wamrBinary,
+            "--stack-size=${1.Mb}", // 64KB stack (adjust as needed) , default
             "--heap-size=${10.Mb}", // 10MB heap (adjust as needed) , default
+            "--gc-heap-size=${1.Mb}", // 128MB gc heap (adjust as needed) , default
             "-f",
             "dummy",
             wasmFile.get().asFile.toPath()

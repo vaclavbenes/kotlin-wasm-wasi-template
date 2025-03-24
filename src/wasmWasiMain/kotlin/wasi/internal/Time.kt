@@ -1,19 +1,13 @@
-//import kotlinx.io.buffered
-//import kotlinx.io.files.Path
-//import kotlinx.io.files.SystemFileSystem
+package wasi.internal
+
 import kotlin.wasm.unsafe.Pointer
 import kotlin.wasm.unsafe.UnsafeWasmMemoryApi
 import kotlin.wasm.unsafe.withScopedMemoryAllocator
 
-fun main() {
-    println("Hello from Kotlin via WASI")
-    println("Main function")
-    println("Current 'realtime' timestamp is: ${wasiRealTime()}")
-    println("Current 'monotonic' timestamp is: ${wasiMonotonicTime()}")
+@WasmImport("wasi_snapshot_preview1", "fd_write")
+internal external fun wasiRawFdWrite(descriptor: Int, scatterPtr: Int, scatterSize: Int, errorPtr: Int): Int
 
-//    SystemFileSystem.sink(Path("example.txt")).buffered().write("Hello from Kotlin via WASI".encodeToByteArray())
 
-}
 
 @WasmImport("wasi_snapshot_preview1", "clock_time_get")
 private external fun wasiRawClockTimeGet(clockId: Int, precision: Long, resultPtr: Int): Int
@@ -38,9 +32,3 @@ fun wasiGetTime(clockId: Int): Long = withScopedMemoryAllocator { allocator ->
 fun wasiRealTime(): Long = wasiGetTime(REALTIME)
 
 fun wasiMonotonicTime(): Long = wasiGetTime(MONOTONIC)
-
-// We need it to run WasmEdge with the _initialize function
-@WasmExport
-fun dummy() {
-    println("Exported dummy function")
-}
